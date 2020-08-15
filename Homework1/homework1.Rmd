@@ -1,0 +1,18 @@
+---
+title: "homework1"
+author: "Jun Rao"
+date: "8/12/2020"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+#the download only happens if the file does not yet exist on your system
+if(!file.exists("zip.test.gz")){
+  download.file(
+    "https://web.stanford.edu/~hastie/ElemStatLearn/datasets/zip.test.gz",
+    "zip.test.gz"
+    )
+}
+```
+
+

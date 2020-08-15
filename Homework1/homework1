@@ -1,0 +1,7 @@
+if(!file.exists("zip.test.gz")){
+  download.file
+  (
+    "https://web.stanford.edu/~hastie/ElemStatLearn/datasets/zip.test.gz",
+    "zip.test.gz"
+    )
+}
