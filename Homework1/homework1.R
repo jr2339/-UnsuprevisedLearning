@@ -1,5 +1,3 @@
-
-
 #if didn't find file, download it
 if(!file.exists("zip.test.gz")){
   download.file(

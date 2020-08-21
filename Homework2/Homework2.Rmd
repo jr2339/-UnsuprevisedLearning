@@ -1,0 +1,106 @@
+---
+title: "Homework2"
+author: "Jun Rao"
+date: "8/15/2020"
+output: word_document
+---
+
+Homework 2: data visualization using ggplot2
+
+These are exercises from http://members.cbio.mines-paristech.fr/~thocking/animint2-manual/Ch02-ggplot2.html (the variable name viz.aligned below refers to ggplot code on that web page).
+
+```{r}
+#if we didn't in stll remotes package, we install it
+if(FALSE){
+    install.packages("remotes")
+}
+
+#if we didn't in stll animint2 package, we install it
+if(FALSE){
+    remotes::install_github("tdhock/animint2") 
+}
+
+library(animint2)
+
+
+
+```
+1.In viz.aligned we showed a ggplot with a scatterplot panel on the left and a time series panel on the right. Make another version of the data visualization with the time series panel on the left and the scatterplot panel on the right. Hint: the order of panels in ggplots is controlled by the factor levels of the facet variable. For example facet_grid(. ~ x) means use the different values of the x variable in different facets, where x = factor(values, levels).
+
+```{r fig.width=15, fig.height=5}
+
+add.x.var <- function(df, x.var){
+  data.frame(df, x.var=factor(x.var, c("year", "life expectancy")))
+}
+
+
+viz.aligned <- function(df1,df2,df){
+  viz.aligned <- ggplot()+
+      geom_path(aes(x=life.expectancy,y=fertility.rate,color=region,
+                  group=country),
+              data=add.x.var(df1, "life expectancy"))+
+    geom_point(aes(x=life.expectancy,y=fertility.rate,color=region),
+               data=add.x.var(df2, "life expectancy"))+
+
+    geom_line(aes(x=year,y=fertility.rate, color=region, group=country),
+              data=add.x.var(df, "year"))+
+    xlab("")+
+    facet_grid(. ~ x.var, scales="free")+
+    theme_bw()+
+    theme(panel.margin=grid::unit(0, "lines"))
+  
+
+  return(viz.aligned)
+}
+
+
+viz.aligned(subset(WorldBank, 1970 <= year & year <= 1975),subset(WorldBank, year==1975),WorldBank)
+
+
+
+```
+2.In viz.aligned the scatterplot displays fertility rate and life expectancy, but the time series displays only fertility rate. Make another version of the data visualization that shows both time series. There should be only one ggplot that looks something like this. Hint: add another geom_point and use both horizontal and vertical panels in facet_grid(row_var ~ col_var).
+
+```{r fig.width=15, fig.height=5}
+
+
+add.vars <- function(df,x.var,y.var){
+  data.frame(df,x.var=factor(x.var, c("fertility rate", "life expectancy")), y.var=factor(y.var, c("year", "life expectancy")))
+}
+
+viz.aligned2 <- function(df){
+  result <- ggplot()+
+
+    geom_point(aes(x=life.expectancy,y=year, color=region),
+               data=add.vars(df, "life expectancy","year"))+
+    geom_point(aes(x=fertility.rate,y=year, color=region),
+              data=add.vars(df, "fertility rate","year"))+
+     geom_point(aes(x=fertility.rate,y=life.expectancy, color=region),
+              data=add.vars(df, "fertility rate","life expectancy"))+
+    xlab("")+
+    facet_grid(y.var~ x.var, scales="free")
+  
+  return(result)
+}
+
+
+viz.aligned2(WorldBank)
+```
+3.Create a multi-panel data visualization (scatterplot of data for one year in each panel) that shows each year of the WorldBank data set in a separate panel of one ggplot. Hint: use facet_wrap.
+```{r fig.width=15, fig.height=15}
+viz.panels <- function(df){
+  result <- ggplot(df,aes(life.expectancy,fertility.rate,color=region,group=country)) +
+      geom_point() +
+      facet_wrap(~year)
+  
+  
+  return(result)
+}
+
+
+viz.panels(WorldBank)
+
+```
+
+
+
