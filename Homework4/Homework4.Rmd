@@ -59,7 +59,9 @@ use scale_x_log10() and scale_y_log10() in your ggplot.
 ```{r}
 Myplot <- function(data.set){
     time.dt.list <- list()
-    for (N in seq(10, 1000, by =100)) {
+    (log.scale.seq <- as.integer(c(10^seq(1, log10(600), l=20))))
+    # seq(10, 1000, by =100)
+    for (N in log.scale.seq) {
         X <- data.set[1:N,]
         timing.df <- microbenchmark::microbenchmark(hclust={
             d.mat <- stats::dist(X, method="manhattan")
@@ -76,12 +78,18 @@ Myplot <- function(data.set){
     time.dt[, time.seconds := time/1e9]
     time.dt[, algorithm := expr]
   
-    g<-ggplot()+geom_point(aes(x=data.size,y=time.seconds,color=algorithm),data=time.dt)
+    g<-ggplot()+
+      geom_point(aes(x=data.size,y=time.seconds,color=algorithm),data=time.dt)+
+      xlab("data set size (scale_x_log10)") + ylab("computation time (secs)")
+    
+    
     return(g)
 }
 
 
 Myplot(df)
+
+
 
 ```
 4.Compare two linkage methods (e.g. single and average, if one of those two does not work for some reason, try another one), for cluster sizes from 1 to 20, on the zip.test data set, in terms of Adjusted Rand Index. Make a plot of ARI versus number of clusters, each linkage method in a different color (e.g. single=black, average=red). What is the best value of ARI that you observed? What linkage method, and how many clusters?
@@ -130,22 +138,29 @@ ARI(dt,df,20)
 ```
 Extra credit (10 points): use the ggdendro package to plot the dendrograms from problem 4 in a multi-panel ggplot (one panel for each linkage method). How similar are the two cluster trees?
 ```{r}
-hc1 <- hclust(dist(df), "single")
+X = df[1:100,1:50]
+
+hc1 <- hclust(dist(X ,method="manhattan"), "single")
 p1 <- ggdendrogram(hc1, rotate = FALSE, size = 2)
 
-hc2 <- hclust(dist(df), "average")
+hc2 <- hclust(dist(X ,method="manhattan"), "average")
 p2 <- ggdendrogram(hc2, rotate = FALSE, size = 2)
 
-hc3 <- hclust(dist(df), "complete")
+hc3 <- hclust(dist(X ,method="manhattan"), "complete")
 p3 <- ggdendrogram(hc3, rotate = FALSE, size = 2)
 
-hc4 <- hclust(dist(df), "median")
+hc4 <- hclust(dist(X ,method="manhattan"), "median")
 p4 <- ggdendrogram(hc4, rotate = FALSE, size = 2)
 
 
 ggarrange(p1, p2,p3,p4,
           labels = c("single", "average", "complete", "median"),
-          ncol = 2, nrow = 2)
+           font.label = list(size = 10),
+           legend =c("top","right"),
+          common.legend = TRUE,
+           ncol = 2, nrow = 2)
+
+
 
 ```
 
@@ -209,7 +224,7 @@ HCLUST <- function(data.matrix, K)
 }
 
 
-K <- 150
+K <- 40
 data.matrix <-iris[,1:4]
  
 
@@ -219,7 +234,7 @@ data.matrix <- as.matrix(data.matrix[seq(1,K),])
 
 h=hclust(dist(data.matrix),method="single")
 
-print(cbind(h$merge,'<-->',h1$merge))
+print(cbind(h$merge,h1$merge))
 
 ```
 
