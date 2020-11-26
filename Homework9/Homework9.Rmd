@@ -91,6 +91,8 @@ for(n.segs in 1:max.segments){
 segs.dt.list$binseg <- data.table(coef(binseg.models), algorithm="BinSeg")
 segs.dt <- do.call(rbind, segs.dt.list)
 
+segs.dt
+
 segs.dt <- do.call(rbind, segs.dt.list)
 for(col.name in c("start", "end")){
   col.value <- segs.dt[[col.name]]

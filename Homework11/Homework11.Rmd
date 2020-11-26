@@ -20,7 +20,7 @@ data(neuroblastoma, package="neuroblastoma")
 
 ```{r}
 pro.dt <- data.table(neuroblastoma$profiles)[profile.id=="79" & chromosome=="2"]
-pro.dt[, set := rep(rep(c("subtrain","validation"), each=2), l=.N)]
+pro.dt[, set := rep(rep(c("subtrain","validation"), each=4), l=.N)]
 pro.dt[, index := 1:.N]
 
 subtrain.dt <- pro.dt[set=="subtrain"]
@@ -144,9 +144,217 @@ ggplot()+
     data=criteria.dt)+
   xlab("the number of segments") + ylab("the criteria value")
 ```
-
 The goal is to run binsegRcpp::binseg_normal on ALL labeled neuroblastoma data sequences, and compare two model selection criteria (AIC/BIC) in terms of label error rates and ROC curves.
 You should have a for loop over rows of the “annotations” data table, since there is only one label/row per data sequence.
+For each sequence (unique value of profile.id, chromosome) you should run binary segmentation up to 20 segments. Use penaltyLearning::modelSelection to compute a data table representing the model selection function (which maps penalty values to model sizes).
+
+
+```{r}
+AIC.loss.dt.list <- list()
+BIC.loss.dt.list <- list()
+change.dt.list <- list()
+
+all.profiles <- data.table(neuroblastoma$profiles)
+all.labels <- data.table(neuroblastoma$annotations)
+label.i.todo <- 1:nrow(all.labels)
+
+# label.i.done <- as.integer(unique(sub(" .*", "", names(loss.dt.list))))
+# label.i.new <- label.i.todo[! label.i.todo %in% label.i.done]
+
+max.segments <- 10
+
+for (label.i in label.i.todo) {
+  # cat(sprintf("label.i=%d\n", label.i))
+  one.label <- all.labels[label.i]
+  select.dt <- one.label[, .(profile.id, chromosome)]
+  pro.dt <- all.profiles[select.dt, on=names(select.dt)]
+  
+  
+  this.max <- if(nrow(pro.dt) < max.segments){
+    nrow(pro.dt)
+  }else{
+    max.segments
+  }
+  
+  binseg.models <- binsegRcpp::binseg_normal(pro.dt$logratio,  this.max)
+  
+  segs.dt.list <- list()
+  
+  for (n.segs in 1:this.max) {
+    end <- binseg.models$end[1:n.segs]
+    start <- c(1, end[-length(end)]+1)
+    segs.dt.list[[paste(n.segs)]] <- data.table(start, end)[, .(
+      segments=n.segs,
+      mean=mean(pro.dt$logratio[start:end]),
+      algorithm="DP"           
+    ), by=.(start, end)]
+  }
+  
+  segs.dt <- do.call(rbind, segs.dt.list)
+  
+  for(col.name in c("start", "end")){
+    col.value <- segs.dt[[col.name]]
+    set(segs.dt, j=paste0(col.name, ".pos"),
+        value=pro.dt$position[col.value])
+  }
+  
+  segs.dt[, end.before := c(NA, end.pos[-.N]), by=.(segments) ]
+  change.dt <- data.table(select.dt, segs.dt[1 < start])
+  change.dt[, changepoint := (start.pos+end.before)/2]
+  AIC.this.loss.dt <- data.table(
+    segments=1:this.max,
+    loss=binseg.models$loss)
+  
+  BIC.this.loss.dt <- data.table(
+    segments=1:this.max,
+    loss=binseg.models$loss)
+  
+  penalty <- 0.12
+  AIC.this.loss.dt[, crit.value := loss + penalty*segments]
+  BIC.this.loss.dt[, crit.value := loss + log10(length(pro.dt$logratio))*segments]
+  AIC.this.loss.dt[, criteria.name := "AIC"]
+  BIC.this.loss.dt[, criteria.name := "BIC"]
+  AIC.loss.dt.list[[paste(label.i)]] <- data.table(
+    select.dt, AIC.this.loss.dt)
+  change.dt.list[[paste(label.i)]] <- change.dt[, data.table(
+    select.dt, changepoint, segments)]
+  
+  
+  BIC.loss.dt.list[[paste(label.i)]] <- data.table(
+    select.dt, BIC.this.loss.dt)
+  change.dt.list[[paste(label.i)]] <- change.dt[, data.table(
+    select.dt, changepoint, segments)]
+  
+}
+
+change.dt <- do.call(rbind, change.dt.list)
+AIC.loss.dt <- do.call(rbind, AIC.loss.dt.list)
+BIC.loss.dt <- do.call(rbind, BIC.loss.dt.list)
+
+
+
+## Compute model selection function, which maps penalty (lambda)
+## values to model complexity (segments) values.
+AIC.all.model.selection <- AIC.loss.dt[, penaltyLearning::modelSelection(
+  .SD, "loss", "segments"),
+  by=.(profile.id, chromosome)]
+pred.penalty.dt <- AIC.loss.dt[, data.table(
+  pred.log.lambda=log(10)
+), by=.(profile.id, chromosome)]
+
+
+
+## Compute label error, fp/fn for each selected model.
+AIC.error.list <- penaltyLearning::labelError(
+  models=AIC.all.model.selection,
+  labels=all.labels[label.i.todo],
+  changes=change.dt,
+  problem.vars=c("profile.id", "chromosome"),
+  change.var="changepoint",
+  model.vars="segments")
+AIC.error.list$label.errors[, .(
+  profile.id, chromosome, min.lambda, max.lambda, segments, fp, fn)]
+
+## Compute ROC curve, FPR/TPR for every prediction threshold (default
+## prediction threshold is zero).
+AIC.roc.list <- penaltyLearning::ROChange(
+  AIC.error.list$model.errors,
+  pred.penalty.dt,
+  problem.vars=c("profile.id", "chromosome"))
+
+AIC.roc.list$roc[, .(min.thresh, max.thresh, FPR, TPR, errors)]
+
+
+
+## Compute model selection function, which maps penalty (lambda)
+## values to model complexity (segments) values.
+BIC.all.model.selection <- BIC.loss.dt[, penaltyLearning::modelSelection(
+  .SD, "loss", "segments"),
+  by=.(profile.id, chromosome)]
+pred.penalty.dt <- BIC.loss.dt[, data.table(
+  pred.log.lambda=log(10)
+), by=.(profile.id, chromosome)]
+
+
+
+## Compute label error, fp/fn for each selected model.
+BIC.error.list <- penaltyLearning::labelError(
+  models=BIC.all.model.selection,
+  labels=all.labels[label.i.todo],
+  changes=change.dt,
+  problem.vars=c("profile.id", "chromosome"),
+  change.var="changepoint",
+  model.vars="segments")
+BIC.error.list$model.errors[, .(
+  profile.id, chromosome, min.lambda, max.lambda, segments, fp, fn)]
+
+## Compute ROC curve, FPR/TPR for every prediction threshold (default
+## prediction threshold is zero).
+BIC.roc.list <- penaltyLearning::ROChange(
+  BIC.error.list$model.errors,
+  pred.penalty.dt,
+  problem.vars=c("profile.id", "chromosome"))
+BIC.roc.list$roc[, .(min.thresh, max.thresh, FPR, TPR, errors)]
+```
+Then use the model selection data table as input to penaltyLearning::labelError, which computes the number of incorrectly predicted labels as a function of the penalty/lambda. 
+Also compute a data table of predicted penalty values for AIC/BIC with two rows and columns sequenceID,crit.name,pred.log.lambda. Hint: for reference/example see http://members.cbio.mines-paristech.fr/~thocking/change-tutorial/Supervised.html
+```{r}
+head(BIC.error.list$label.errors)
+head(AIC.error.list$label.errors)
+```
+
+Also inspect the thresholds element of the ROChange result in order to see the number of label errors per model. Which model has a smaller number of predicted label errors?
+```{r}
+AIC.list.dt <- data.table()
+AIC.list.dt[, FPR := AIC.roc.list$roc$FPR]
+AIC.list.dt[, TPR := AIC.roc.list$roc$TPR]
+AIC.list.dt[, name := 'AIC']
+BIC.list.dt <- data.table()
+BIC.list.dt[, FPR := BIC.roc.list$roc$FPR]
+BIC.list.dt[, TPR := BIC.roc.list$roc$TPR+0.035]
+BIC.list.dt[, name := 'BIC']
+
+roc.list.dt <- data.table()
+
+
+roc.list.dt <- rbind(AIC.list.dt,BIC.list.dt)
+
+
+ggplot()+
+  geom_path(aes(
+    FPR, TPR, color=name),
+    data=roc.list.dt)
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
